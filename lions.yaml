@@ -1,69 +1,29 @@
-@file:OptIn(ExperimentalWearMaterialApi::class)
-
-package com.example.myapplication
-
-import android.app.WallpaperManager
-import android.content.ComponentName
-import android.content.Intent
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.wear.compose.material.ExperimentalWearMaterialApi
-import com.example.myapplication.ui.theme.MyApplicationTheme
-
-
-
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
-            MyApplicationTheme {
-                Button(onClick = {
-                    val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
-                    intent.putExtra(
-                        WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                        ComponentName(this, SnowWallpaperService::class.java)
-                    )
-                    startActivity(intent)
-                }) {
-                    Text("배경화면으로 설정하기")
-                }
-            }
-        }
-    }
-}
-
-package com.example.myapplication
-
-import android.graphics.Color
-import android.graphics.Paint
-import android.os.Handler
-import android.os.Looper
-import android.service.wallpaper.WallpaperService
-import android.view.SurfaceHolder
-import kotlin.apply
-
 class SnowWallpaperService : WallpaperService() {
     override fun onCreateEngine(): Engine = SnowEngine()
 
     inner class SnowEngine : Engine() {
+
         private val handler = Handler(Looper.getMainLooper())
-        private val paint = Paint().apply{
+        private val paint = Paint().apply {
             color = Color.WHITE
             isAntiAlias = true
         }
 
-        private var circleY = 0f
+        private val particles = mutableListOf<SnowParticle>() // [단계 2] 파티클 리스트
 
-        private val drawRunnable = object : Runnable {
+        private val drawRunnable = object : Runnable {        // [단계 3 이전] 드로우 루프
             override fun run() {
                 drawFrame()
-                handler.postDelayed(this,16)
+                handler.postDelayed(this, 16)
             }
+        }
+
+        override fun onSurfaceChanged(                        // [단계 2] 화면 크기 확정 시
+            holder: SurfaceHolder, format: Int,
+            width: Int, height: Int
+        ) {
+            super.onSurfaceChanged(holder, format, width, height)
+            initParticles(width, height)
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
@@ -72,62 +32,41 @@ class SnowWallpaperService : WallpaperService() {
             else handler.removeCallbacks(drawRunnable)
         }
 
-        override fun onSurfaceDestroyed(holder: SurfaceHolder?) {
+        override fun onSurfaceDestroyed(holder: SurfaceHolder) {
             super.onSurfaceDestroyed(holder)
             handler.removeCallbacks(drawRunnable)
+        }
+
+        private fun initParticles(width: Int, height: Int) { // [단계 2] 파티클 초기화
+            particles.clear()
+            repeat(100) {
+                particles.add(
+                    SnowParticle(
+                        x      = (0..width).random().toFloat(),
+                        y      = (0..height).random().toFloat(),
+                        speed  = (2..6).random().toFloat(),
+                        radius = (4..12).random().toFloat()
+                    )
+                )
+            }
         }
 
         private fun drawFrame() {
             val canvas = surfaceHolder.lockCanvas() ?: return
             try {
-                canvas.drawColor(Color.BLACK)
-                circleY += 5f
-                if (circleY > canvas.height) circleY = 0f
-                canvas.drawCircle(canvas.width / 2f, circleY, 30f, paint)
+                canvas.drawColor(Color.BLACK)               // [단계 3] 배경 지우기
+
+                for (p in particles) {                      // [단계 3] 전체 순회
+                    p.y += p.speed                          // [단계 3] 위치 업데이트
+                    if (p.y > canvas.height) {
+                        p.y = 0f
+                        p.x = (0..canvas.width).random().toFloat() // [단계 3] 랜덤 리셋
+                    }
+                    canvas.drawCircle(p.x, p.y, p.radius, paint)   // [단계 3] 그리기
+                }
             } finally {
-                surfaceHolder.unlockCanvasAndPost(canvas)
+                surfaceHolder.unlockCanvasAndPost(canvas)   // [단계 2] 화면 반영
             }
         }
     }
-
 }
-
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-
-    <application
-        android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.MyApplication">
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:theme="@style/Theme.MyApplication">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-        <service
-            android:name=".SnowWallpaperService"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.BIND_WALLPAPER"
-            android:label="Snow Wallpaper">
-            <intent-filter>
-                <action android:name = "android.service.wallpaper.WallpaperService" />
-            </intent-filter>
-
-        </service>
-
-    </application>
-
-</manifest>
