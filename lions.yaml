@@ -1,4 +1,9 @@
 class SnowWallpaperService : WallpaperService() {
+
+    companion object {
+        var backgroundBitmap: Bitmap? = null  // [단계 3] 전역 Bitmap 저장소
+    }
+
     override fun onCreateEngine(): Engine = SnowEngine()
 
     inner class SnowEngine : Engine() {
@@ -9,20 +14,27 @@ class SnowWallpaperService : WallpaperService() {
             isAntiAlias = true
         }
 
-        private val particles = mutableListOf<SnowParticle>() // [단계 2] 파티클 리스트
+        private val particles = mutableListOf<SnowParticle>()
+        private var scaledBitmap: Bitmap? = null  // [최적화] 미리 축소된 Bitmap
 
-        private val drawRunnable = object : Runnable {        // [단계 3 이전] 드로우 루프
+        private val drawRunnable = object : Runnable {
             override fun run() {
                 drawFrame()
                 handler.postDelayed(this, 16)
             }
         }
 
-        override fun onSurfaceChanged(                        // [단계 2] 화면 크기 확정 시
+        override fun onSurfaceChanged(
             holder: SurfaceHolder, format: Int,
             width: Int, height: Int
         ) {
             super.onSurfaceChanged(holder, format, width, height)
+
+            // [최적화] 배경 이미지를 화면 크기로 미리 축소 (1회만 실행)
+            scaledBitmap = backgroundBitmap?.let {
+                Bitmap.createScaledBitmap(it, width, height, true)
+            }
+
             initParticles(width, height)
         }
 
@@ -37,7 +49,7 @@ class SnowWallpaperService : WallpaperService() {
             handler.removeCallbacks(drawRunnable)
         }
 
-        private fun initParticles(width: Int, height: Int) { // [단계 2] 파티클 초기화
+        private fun initParticles(width: Int, height: Int) {
             particles.clear()
             repeat(100) {
                 particles.add(
@@ -54,19 +66,84 @@ class SnowWallpaperService : WallpaperService() {
         private fun drawFrame() {
             val canvas = surfaceHolder.lockCanvas() ?: return
             try {
-                canvas.drawColor(Color.BLACK)               // [단계 3] 배경 지우기
+                // [단계 4] 1. 배경 먼저 그리기 (파티클 잔상 지우개 역할)
+                val bg = scaledBitmap
+                if (bg != null) {
+                    canvas.drawBitmap(bg, 0f, 0f, null)  // 이미 크기 맞춰져 있어서 바로 그리기
+                } else {
+                    canvas.drawColor(Color.BLACK)
+                }
 
-                for (p in particles) {                      // [단계 3] 전체 순회
-                    p.y += p.speed                          // [단계 3] 위치 업데이트
+                // [단계 4] 2. 파티클 그리기
+                for (p in particles) {
+                    p.y += p.speed
                     if (p.y > canvas.height) {
                         p.y = 0f
-                        p.x = (0..canvas.width).random().toFloat() // [단계 3] 랜덤 리셋
+                        p.x = (0..canvas.width).random().toFloat()
                     }
-                    canvas.drawCircle(p.x, p.y, p.radius, paint)   // [단계 3] 그리기
+                    canvas.drawCircle(p.x, p.y, p.radius, paint)
                 }
             } finally {
-                surfaceHolder.unlockCanvasAndPost(canvas)   // [단계 2] 화면 반영
+                surfaceHolder.unlockCanvasAndPost(canvas)
             }
         }
     }
+}
+
+class MainActivity : ComponentActivity() {
+
+    // [단계 1] 갤러리 런처
+    private val pickImage = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            // [단계 2] URI → Bitmap 변환
+            val bitmap = uriToBitmap(uri)
+            // [단계 3] WallpaperService로 전달
+            SnowWallpaperService.backgroundBitmap = bitmap
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MyApplicationTheme {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Button(onClick = {
+                        pickImage.launch("image/*")  // 갤러리 열기
+                    }) {
+                        Text("이미지 선택하기")
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(onClick = {
+                        val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
+                        intent.putExtra(
+                            WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                            ComponentName(this@MainActivity, SnowWallpaperService::class.java)
+                        )
+                        startActivity(intent)
+                    }) {
+                        Text("배경화면으로 설정하기")
+                    }
+                }
+            }
+        }
+    }
+
+    // [단계 2] URI → Bitmap 변환 함수
+    private fun uriToBitmap(uri: Uri) =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            ImageDecoder.decodeBitmap(
+                ImageDecoder.createSource(contentResolver, uri)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            MediaStore.Images.Media.getBitmap(contentResolver, uri)
+        }
 }
