@@ -1,3 +1,74 @@
+class MainActivity : ComponentActivity() {
+
+    // [단계 1] 갤러리 런처
+    private val pickImage = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            // [단계 2] URI → Bitmap 변환
+            val bitmap = uriToBitmap(uri)
+            // [단계 3] WallpaperService로 전달
+            SnowWallpaperService.backgroundBitmap = bitmap
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MyApplicationTheme {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Button(onClick = {
+                        pickImage.launch("image/*")  // 갤러리 열기
+                    }) {
+                        Text("이미지 선택하기")
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(onClick = {
+                        val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
+                        intent.putExtra(
+                            WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+                            ComponentName(this@MainActivity, SnowWallpaperService::class.java)
+                        )
+                        startActivity(intent)
+                    }) {
+                        Text("배경화면으로 설정하기")
+                    }
+                }
+            }
+        }
+    }
+
+    // [단계 2] URI → Bitmap 변환 함수
+    private fun uriToBitmap(uri: Uri): Bitmap {
+        val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            ImageDecoder.decodeBitmap(
+                ImageDecoder.createSource(contentResolver, uri)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            MediaStore.Images.Media.getBitmap(contentResolver, uri)
+        }
+        return bitmap.copy(Bitmap.Config.ARGB_8888,false)
+    }
+}
+
+SnowParticle
+
+data class SnowParticle(
+    var x: Float,
+    var y: Float,
+    val speed: Float,
+    val radius: Float
+)
+
+SnowWallpaperService
+
 class SnowWallpaperService : WallpaperService() {
 
     companion object {
@@ -90,60 +161,26 @@ class SnowWallpaperService : WallpaperService() {
     }
 }
 
-class MainActivity : ComponentActivity() {
+snow_wallpaper.xml
+<wallpaper
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:thumbnail="@mipmap/ic_launcher"
+    android:description="@string/app_name"
+    />
 
-    // [단계 1] 갤러리 런처
-    private val pickImage = registerForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            // [단계 2] URI → Bitmap 변환
-            val bitmap = uriToBitmap(uri)
-            // [단계 3] WallpaperService로 전달
-            SnowWallpaperService.backgroundBitmap = bitmap
-        }
-    }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            MyApplicationTheme {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Button(onClick = {
-                        pickImage.launch("image/*")  // 갤러리 열기
-                    }) {
-                        Text("이미지 선택하기")
-                    }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+<service
+            android:name=".SnowWallpaperService"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BIND_WALLPAPER"
+            android:label="Snow Wallpaper">
+            <intent-filter>
+                <action android:name = "android.service.wallpaper.WallpaperService" />
+            </intent-filter>
 
-                    Button(onClick = {
-                        val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
-                        intent.putExtra(
-                            WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                            ComponentName(this@MainActivity, SnowWallpaperService::class.java)
-                        )
-                        startActivity(intent)
-                    }) {
-                        Text("배경화면으로 설정하기")
-                    }
-                }
-            }
-        }
-    }
-
-    // [단계 2] URI → Bitmap 변환 함수
-    private fun uriToBitmap(uri: Uri) =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            ImageDecoder.decodeBitmap(
-                ImageDecoder.createSource(contentResolver, uri)
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            MediaStore.Images.Media.getBitmap(contentResolver, uri)
-        }
-}
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/snow_wallpaper"/>
+        </service>
