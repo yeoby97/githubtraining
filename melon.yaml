@@ -1,3 +1,29 @@
-asd: asd
-
-ooo: ooo
+FATAL EXCEPTION: main
+                                                                                                    Process: com.example.myapplication, PID: 1749
+                                                                                                    java.lang.IllegalArgumentException: Software rendering doesn't support hardware bitmaps
+                                                                                                    	at android.os.Trace$$ExternalSyntheticBUOutline0.m$3(D8$$SyntheticClass:0)
+                                                                                                    	at android.graphics.BaseCanvas.throwIfHwBitmapInSwMode(BaseCanvas.java:771)
+                                                                                                    	at android.graphics.BaseCanvas.throwIfCannotDraw(BaseCanvas.java:91)
+                                                                                                    	at android.graphics.BaseCanvas.drawBitmap(BaseCanvas.java:131)
+                                                                                                    	at android.graphics.Canvas.drawBitmap(Canvas.java:1616)
+                                                                                                    	at com.example.myapplication.SnowWallpaperService$SnowEngine.drawFrame(SnowWallpaperService.kt:83)
+                                                                                                    	at com.example.myapplication.SnowWallpaperService$SnowEngine.access$drawFrame(SnowWallpaperService.kt:20)
+                                                                                                    	at com.example.myapplication.SnowWallpaperService$SnowEngine$drawRunnable$1.run(SnowWallpaperService.kt:33)
+                                                                                                    	at android.os.Handler.handleCallback(Handler.java:1095)
+                                                                                                    	at android.os.Handler.dispatchMessageImpl(Handler.java:135)
+                                                                                                    	at android.os.Handler.dispatchMessage(Handler.java:125)
+                                                                                                    	at android.os.Looper.loopOnce(Looper.java:321)
+                                                                                                    	at android.os.Looper.loop(Looper.java:422)
+                                                                                                    	at android.app.ActivityThread.main(ActivityThread.java:10595)
+                                                                                                    	at java.lang.reflect.Method.invoke(Native Method)
+                                                                                                    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:615)
+                                                                                                    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:982)
+2026-04-27 17:19:16.323  2034-2034  SurfaceFlinger          surfaceflinger                       E  alpha changed 1.000 -> 0.000 - Surface(name=45c1f00 com.example.myapplication.SnowWallpaperService#2761)/@0x983922e - animation-leash of window_animation#2766
+2026-04-27 17:19:16.323  2034-2034  SurfaceFlinger          surfaceflinger                       E  alpha changed 0.000 -> 0.000 - Surface(name=45c1f00 com.example.myapplication.SnowWallpaperService#2761)/@0x983922e - animation-leash of window_animation#2766
+2026-04-27 17:19:16.332  2034-2034  SurfaceFlinger          surfaceflinger                       E  alpha changed 0.000 -> 0.036 - Surface(name=45c1f00 com.example.myapplication.SnowWallpaperService#2761)/@0x983922e - animation-leash of window_animation#2766
+---------------------------- PROCESS ENDED (1749) for package com.example.myapplication ----------------------------
+2026-04-27 17:19:16.361  2691-3591  InputDispatcher         system_server                        E  channel '45c1f00 com.example.myapplication.SnowWallpaperService' ~ Channel is unrecoverably broken and will be disposed!
+2026-04-27 17:19:16.363  2691-3591  InputDispatcher         system_server                        E  channel '605ada1 com.example.myapplication.SnowWallpaperService' ~ Channel is unrecoverably broken and will be disposed!
+2026-04-27 17:19:16.865  2691-3054  WindowManager           system_server                        E  win=Window{45c1f00 u0 com.example.myapplication.SnowWallpaperService EXITING} destroySurfaces: appStopped=false cleanupOnResume=false win.mWindowRemovalAllowed=true win.mRemoveOnExit=true win.mViewVisibility=0 caller=com.android.server.wm.WindowState.onExitAnimationDone:214 com.android.server.wm.WindowState.onAnimationFinished:179 com.android.server.wm.WindowContainer$$ExternalSyntheticLambda7.onAnimationFinished:2 com.android.server.wm.SurfaceAnimator$$ExternalSyntheticLambda0.onAnimationFinished:80 com.android.server.wm.LocalAnimationAdapter$$ExternalSyntheticLambda0.run:6 android.os.Handler.handleCallback:1095 android.os.Handler.dispatchMessageImpl:135 
+2026-04-27 17:19:16.873  2034-2034  SurfaceFlinger          surfaceflinger                       E  alpha changed 0.032 -> 0.000 - Surface(name=45c1f00 com.example.myapplication.SnowWallpaperService#2761)/@0x983922e - animation-leash of window_animation#2775
+---------------------------- PROCESS STARTED (4472) for package com.example.myapplication ----------------------------
