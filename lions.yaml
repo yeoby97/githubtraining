@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.widget.Space
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -14,6 +15,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -58,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lockscreen.ui.theme.LockScreenTheme
@@ -66,6 +70,7 @@ import java.util.*
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class LockScreenActivity : ComponentActivity() {
     private lateinit var keyguardManager: KeyguardManager
@@ -106,7 +111,19 @@ class LockScreenActivity : ComponentActivity() {
 fun LockScreen(onUnlock: () -> Unit) {
 
     var isFloating by remember { mutableStateOf(false) }
+// 드래그용 현재 위치
+    var clockOffset by remember { mutableStateOf(Offset.Zero) }
+    var greenBoxOffset by remember { mutableStateOf(Offset.Zero) }
+// 확인 시 저장 / 취소 시 복원할 위치
+    var savedClockOffset by remember { mutableStateOf(Offset.Zero) }
+    var savedGreenBoxOffset by remember { mutableStateOf(Offset.Zero) }
 
+// 뒤로가기 → 원래 위치로 복원
+    BackHandler(enabled = isFloating) {
+        clockOffset = savedClockOffset
+        greenBoxOffset = savedGreenBoxOffset
+        isFloating = false
+    }
     // 화면 크기 가져오기
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -179,12 +196,8 @@ fun LockScreen(onUnlock: () -> Unit) {
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
-                    transformOrigin = TransformOrigin(0.5f, 0f)
+                    transformOrigin = TransformOrigin(0.5f, 0.2f)
                 }
-                .padding(
-                    horizontal = horizontalPaddingAnim,
-                    vertical = verticalPaddingAnim
-                )
                 .clip(RoundedCornerShape(cornerRadius))
                 .background(Color.Magenta)
                 .pointerInput(Unit) {
@@ -232,13 +245,11 @@ fun LockScreen(onUnlock: () -> Unit) {
                         ) {
                             Text("배경화면")
                         }
-                        Button(
-                            onClick = {
-                                isFloating = false
-                            }
-                        ) {
-                            Text("확인")
-                        }
+                        Button(onClick = {
+                            savedClockOffset = clockOffset
+                            savedGreenBoxOffset = greenBoxOffset
+                            isFloating = false
+                        }) { Text("확인") }
                     }
                     Spacer(
                         modifier = Modifier.height(screenHeight * 0.1f)
@@ -247,20 +258,38 @@ fun LockScreen(onUnlock: () -> Unit) {
                         screenHeight = screenHeight,
                         screenWidth = screenWidth,
                         screenBig = screenBig,
-                        isFloating = isFloating
+                        isFloating = isFloating,
+                        modifier = Modifier
+                            .offset { IntOffset(clockOffset.x.roundToInt(), clockOffset.y.roundToInt()) }
+                            .pointerInput(isFloating) {
+                                if (isFloating) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        clockOffset += dragAmount
+                                    }
+                                }
+                            }
                     )
                     val floatModifier = Modifier.clip(RoundedCornerShape(20.dp)) // 모서리를 둥글게 (20.dp 반경)
                         .border(width = 2.dp, color = Color.LightGray, shape = RoundedCornerShape(20.dp)) // 테두리 추가
                         .padding(10.dp)
                     Spacer(modifier=Modifier.height(screenHeight * 0.4f))
                     Box(
-                        modifier = Modifier.then(floatModifier)
+                        modifier = Modifier
+                            .offset { IntOffset(greenBoxOffset.x.roundToInt(), greenBoxOffset.y.roundToInt()) }
+                            .pointerInput(isFloating) {
+                                if (isFloating) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        greenBoxOffset += dragAmount
+                                    }
+                                }
+                            }
+                            .then(floatModifier)
                             .height(50.dp)
                             .width(200.dp)
                             .background(Color.Green)
-                    ){
-
-                    }
+                    ) {}
                 }
             }
         }
@@ -269,81 +298,80 @@ fun LockScreen(onUnlock: () -> Unit) {
 
 @Composable
 fun ClockAndWidget(
-    screenHeight : Dp,
-    screenWidth : Dp,
-    screenBig : Dp,
-    isFloating : Boolean
+    screenHeight: Dp,
+    screenWidth: Dp,
+    screenBig: Dp,
+    isFloating: Boolean,
+    modifier: Modifier = Modifier
 ){
     val floatModifier = Modifier.clip(RoundedCornerShape(20.dp)) // 모서리를 둥글게 (20.dp 반경)
         .border(width = 2.dp, color = Color.LightGray, shape = RoundedCornerShape(20.dp)) // 테두리 추가
         .padding(10.dp)
     val normalModifier = Modifier
         .padding(10.dp)
-    Box(
-        modifier = if(isFloating) floatModifier else normalModifier
-    ){
-        Column(
 
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ){
+        // 현재 시간 표시
+        val locale = LocalLocale.current
+        val timeFormat = SimpleDateFormat("hh:mm", Locale.getDefault())
+        val currentTime = timeFormat.format(Calendar.getInstance().time)
+        Text(
+            text = currentTime,
+            color = Color.White,
+            fontSize = 48.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        // 현재 날짜 표시
+        val dateFormat = SimpleDateFormat("EEEE, MMMM dd", Locale.getDefault())
+        val currentDate = dateFormat.format(Calendar.getInstance().time)
+        Text(
+            text = currentDate,
+            color = Color.White,
+            fontSize = 18.sp,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        Spacer(modifier = Modifier.height(screenHeight * 0.02f))
+        val widgetFloatModifier = Modifier.clip(RoundedCornerShape(20.dp)) // 모서리를 둥글게 (20.dp 반경)
+            .border(width = 2.dp, color = Color.LightGray, shape = RoundedCornerShape(20.dp)) // 테두리 추가
+            .padding(5.dp)
+            .width(screenBig * 0.25f)
+            .height(screenHeight * 0.05f)
+        Row(
+            modifier = widgetFloatModifier,
+            horizontalArrangement = Arrangement.Center,
         ){
-            // 현재 시간 표시
-            val locale = LocalLocale.current
-            val timeFormat = SimpleDateFormat("hh:mm", Locale.getDefault())
-            val currentTime = timeFormat.format(Calendar.getInstance().time)
-            Text(
-                text = currentTime,
-                color = Color.White,
-                fontSize = 48.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            // 현재 날짜 표시
-            val dateFormat = SimpleDateFormat("EEEE, MMMM dd", Locale.getDefault())
-            val currentDate = dateFormat.format(Calendar.getInstance().time)
-            Text(
-                text = currentDate,
-                color = Color.White,
-                fontSize = 18.sp,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-    }
-    Spacer(modifier = Modifier.height(screenHeight * 0.02f))
-    val widgetFloatModifier = Modifier.clip(RoundedCornerShape(20.dp)) // 모서리를 둥글게 (20.dp 반경)
-        .border(width = 2.dp, color = Color.LightGray, shape = RoundedCornerShape(20.dp)) // 테두리 추가
-        .padding(5.dp)
-        .width(screenBig * 0.25f)
-        .height(screenHeight * 0.05f)
-    Row(
-        modifier = widgetFloatModifier,
-        horizontalArrangement = Arrangement.Center,
-    ){
-        Box(
-            modifier = Modifier
-                .then(floatModifier)
-                .height(screenHeight * 0.035f)
-                .width(screenHeight * 0.035f)
-                .background(Color.Yellow)){
-        }
-        Box(
-            modifier = Modifier
-                .then(floatModifier)
-                .height(screenHeight * 0.035f)
-                .width(screenHeight * 0.035f)
-                .background(Color.Yellow)){
-        }
-        Box(
-            modifier = Modifier
-                .then(floatModifier)
-                .height(screenHeight * 0.035f)
-                .width(screenHeight * 0.035f)
-                .background(Color.Yellow)){
-        }
-        Box(
-            modifier = Modifier
-                .then(floatModifier)
-                .height(screenHeight * 0.035f)
-                .width(screenHeight * 0.035f)
-                .background(Color.Yellow)){
+            Box(
+                modifier = Modifier
+                    .then(floatModifier)
+                    .height(screenHeight * 0.035f)
+                    .width(screenHeight * 0.035f)
+                    .background(Color.Yellow)){
+            }
+            Box(
+                modifier = Modifier
+                    .then(floatModifier)
+                    .height(screenHeight * 0.035f)
+                    .width(screenHeight * 0.035f)
+                    .background(Color.Yellow)){
+            }
+            Box(
+                modifier = Modifier
+                    .then(floatModifier)
+                    .height(screenHeight * 0.035f)
+                    .width(screenHeight * 0.035f)
+                    .background(Color.Yellow)){
+            }
+            Box(
+                modifier = Modifier
+                    .then(floatModifier)
+                    .height(screenHeight * 0.035f)
+                    .width(screenHeight * 0.035f)
+                    .background(Color.Yellow)){
+            }
         }
     }
 }
