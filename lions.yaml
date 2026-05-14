@@ -38,11 +38,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Contacts
+import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MusicNote
@@ -81,6 +86,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -101,21 +107,15 @@ class LockScreenActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         keyguardManager = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
-
         setShowWhenLocked(true)
         setTurnScreenOn(true)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
             keyguardManager.requestDismissKeyguard(this, null)
         }
-
         setContent {
             LockScreenTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     LockScreen(onUnlock = { unlockDevice() })
                 }
             }
@@ -128,7 +128,7 @@ class LockScreenActivity : ComponentActivity() {
 }
 
 // ============================================================
-// 앱 데이터 모델
+// 앱 위젯 슬롯 데이터
 // ============================================================
 data class AppItem(
     val id: String,
@@ -156,6 +156,29 @@ val defaultAppList = listOf(
     AppItem("settings", "설정",    Icons.Filled.Settings,             Color(0xFF424242)),
 )
 
+// ============================================================
+// 미니 위젯 슬롯 데이터
+// ============================================================
+data class MiniWidget(
+    val id: String,
+    val name: String,
+    val icon: ImageVector,
+    val value: String,       // 메인 표시값 (예: "23°", "85%")
+    val label: String,       // 서브 라벨 (예: "맑음", "배터리")
+    val iconTint: Color
+)
+
+val availableWidgets = listOf(
+    MiniWidget("weather",  "날씨",   Icons.Filled.WbSunny,       "23°",   "맑음",   Color(0xFFFFB300)),
+    MiniWidget("steps",    "걸음수", Icons.Filled.DirectionsWalk, "6,234", "걸음",   Color(0xFF4CAF50)),
+    MiniWidget("alarm",    "알람",   Icons.Filled.Alarm,          "07:30", "알람",   Color(0xFF2196F3)),
+    MiniWidget("battery",  "배터리", Icons.Filled.BatteryFull,    "85%",   "배터리", Color(0xFF4CAF50)),
+    MiniWidget("music",    "미디어", Icons.Filled.MusicNote,      "재생중", "음악",   Color(0xFF9C27B0)),
+    MiniWidget("calendar", "캘린더", Icons.Filled.CalendarMonth,  "3시",   "약속",   Color(0xFF3F51B5)),
+    MiniWidget("health",   "건강",   Icons.Filled.Favorite,       "72",    "BPM",   Color(0xFFF44336)),
+    MiniWidget("time",     "세계시각",Icons.Filled.AccessTime,    "NYC",   "-14h",  Color(0xFF607D8B)),
+)
+
 @Composable
 fun LockScreen(onUnlock: () -> Unit) {
 
@@ -163,6 +186,20 @@ fun LockScreen(onUnlock: () -> Unit) {
     var showShortcutPopup by remember { mutableStateOf(false) }
     var showAppWidgetSheet by remember { mutableStateOf(false) }
     var addedApps by remember { mutableStateOf(listOf<AppItem>()) }
+
+    // 미니 위젯 슬롯 상태 (4개, 기본값 세팅)
+    var widgetSlots by remember {
+        mutableStateOf<List<MiniWidget?>>(
+            listOf(
+                availableWidgets[0], // 날씨
+                availableWidgets[1], // 걸음수
+                availableWidgets[2], // 알람
+                availableWidgets[3], // 배터리
+            )
+        )
+    }
+    var editingSlotIndex by remember { mutableStateOf(-1) }
+    var showWidgetPicker by remember { mutableStateOf(false) }
 
     var clockOffset by remember { mutableStateOf(Offset.Zero) }
     var greenBoxOffset by remember { mutableStateOf(Offset.Zero) }
@@ -184,47 +221,37 @@ fun LockScreen(onUnlock: () -> Unit) {
 
     val scale by animateFloatAsState(
         targetValue = if (isFloating) 0.7f else 1f,
-        animationSpec = tween(500, easing = FastOutSlowInEasing),
-        label = "scale"
+        animationSpec = tween(500, easing = FastOutSlowInEasing), label = "scale"
     )
     val horizontalPaddingAnim by animateDpAsState(
         targetValue = if (isFloating) horizontalPadding else 0.dp,
-        animationSpec = tween(500, easing = FastOutSlowInEasing),
-        label = "hPadding"
+        animationSpec = tween(500, easing = FastOutSlowInEasing), label = "hPadding"
     )
     val verticalPaddingAnim by animateDpAsState(
         targetValue = if (isFloating) verticalPadding else 0.dp,
-        animationSpec = tween(500, easing = FastOutSlowInEasing),
-        label = "vPadding"
+        animationSpec = tween(500, easing = FastOutSlowInEasing), label = "vPadding"
     )
     val cornerRadius by animateDpAsState(
         targetValue = if (isFloating) 30.dp else 0.dp,
-        animationSpec = tween(500, easing = FastOutSlowInEasing),
-        label = "corner"
+        animationSpec = tween(500, easing = FastOutSlowInEasing), label = "corner"
     )
-
-    // blur 반경 애니메이션 (floating 시 점점 흐릿하게)
     val blurRadius by animateDpAsState(
         targetValue = if (isFloating) 20.dp else 0.dp,
-        animationSpec = tween(500, easing = FastOutSlowInEasing),
-        label = "blur"
+        animationSpec = tween(500, easing = FastOutSlowInEasing), label = "blur"
     )
 
     var animationFinished by remember { mutableStateOf(false) }
     LaunchedEffect(scale, horizontalPaddingAnim, verticalPaddingAnim) {
-        val scaleTarget = if (isFloating) 0.7f else 1f
-        val hpTarget = if (isFloating) horizontalPadding else 0.dp
-        val vpTarget = if (isFloating) verticalPadding else 0.dp
         val eps = 0.001f
-        animationFinished = abs(scale - scaleTarget) < eps &&
-                abs(horizontalPaddingAnim.value - hpTarget.value) < eps &&
-                abs(verticalPaddingAnim.value - vpTarget.value) < eps
+        animationFinished = abs(scale - (if (isFloating) 0.7f else 1f)) < eps &&
+                abs(horizontalPaddingAnim.value - (if (isFloating) horizontalPadding else 0.dp).value) < eps &&
+                abs(verticalPaddingAnim.value - (if (isFloating) verticalPadding else 0.dp).value) < eps
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
         // =====================================================
-        // [바깥 Box] 흐릿한 배경 이미지 (floating 시 blur)
+        // 바깥: 흐릿한 배경 (floating 시 blur)
         // =====================================================
         Image(
             painter = painterResource(id = R.drawable.images),
@@ -232,15 +259,11 @@ fun LockScreen(onUnlock: () -> Unit) {
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
-                .then(
-                    // blur()는 API 31+ 에서 동작
-                    if (blurRadius > 0.dp) Modifier.blur(blurRadius)
-                    else Modifier
-                )
+                .then(if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier)
         )
 
         // =====================================================
-        // [안쪽 Box] 정상 이미지 + 컨텐츠 (스케일/라운드 애니메이션)
+        // 안쪽: 정상 이미지 + 컨텐츠
         // =====================================================
         Box(
             modifier = Modifier
@@ -256,19 +279,13 @@ fun LockScreen(onUnlock: () -> Unit) {
                         onPress = {
                             val pressStartTime = System.currentTimeMillis()
                             val isReleased = try {
-                                withTimeout(500) {
-                                    tryAwaitRelease()
-                                    true
-                                }
+                                withTimeout(500) { tryAwaitRelease(); true }
                             } catch (e: TimeoutCancellationException) {
-                                isFloating = true
-                                false
+                                isFloating = true; false
                             }
                             if (!isFloating && isReleased &&
                                 System.currentTimeMillis() - pressStartTime >= 500
-                            ) {
-                                isFloating = true
-                            }
+                            ) isFloating = true
                         }
                     )
                 }
@@ -281,15 +298,12 @@ fun LockScreen(onUnlock: () -> Unit) {
                 modifier = Modifier.fillMaxSize()
             )
 
-            // 컨텐츠 레이어
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
+                modifier = Modifier.fillMaxSize().padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // 상단: 버튼 + 시계/위젯 + 추가된 앱
+                // 상단: 버튼 + 시계 + 미니 위젯 슬롯 + 추가 앱
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     if (isFloating) {
                         Row(
@@ -309,9 +323,16 @@ fun LockScreen(onUnlock: () -> Unit) {
 
                     Spacer(modifier = Modifier.height(screenHeight * 0.05f))
 
-                    ClockAndWidget(
+                    // 시계 + 날짜 + 미니 위젯 슬롯
+                    ClockWithWidgetSlots(
+                        screenWidth = screenWidth,
                         screenHeight = screenHeight,
-                        screenBig = screenBig,
+                        isFloating = isFloating,
+                        widgetSlots = widgetSlots,
+                        onSlotClick = { index ->
+                            editingSlotIndex = index
+                            showWidgetPicker = true
+                        },
                         modifier = Modifier
                             .offset {
                                 IntOffset(clockOffset.x.roundToInt(), clockOffset.y.roundToInt())
@@ -373,8 +394,8 @@ fun LockScreen(onUnlock: () -> Unit) {
                     showShortcutPopup = false
                     when (selected) {
                         "app_widget" -> showAppWidgetSheet = true
-                        "favorite_app" -> { /* TODO */ }
-                        "text" -> { /* TODO */ }
+                        "favorite_app" -> { }
+                        "text" -> { }
                     }
                 }
             )
@@ -386,12 +407,257 @@ fun LockScreen(onUnlock: () -> Unit) {
                 apps = defaultAppList,
                 onDismiss = { showAppWidgetSheet = false },
                 onAppSelected = { app ->
-                    if (addedApps.none { it.id == app.id }) {
-                        addedApps = addedApps + app
-                    }
+                    if (addedApps.none { it.id == app.id }) addedApps = addedApps + app
                     showAppWidgetSheet = false
                 }
             )
+        }
+
+        // 미니 위젯 선택 바텀시트
+        if (showWidgetPicker) {
+            MiniWidgetPickerSheet(
+                widgets = availableWidgets,
+                currentWidget = widgetSlots.getOrNull(editingSlotIndex),
+                onDismiss = { showWidgetPicker = false },
+                onWidgetSelected = { widget ->
+                    widgetSlots = widgetSlots.toMutableList().also { list ->
+                        if (editingSlotIndex in list.indices) list[editingSlotIndex] = widget
+                    }
+                    showWidgetPicker = false
+                },
+                onRemove = {
+                    widgetSlots = widgetSlots.toMutableList().also { list ->
+                        if (editingSlotIndex in list.indices) list[editingSlotIndex] = null
+                    }
+                    showWidgetPicker = false
+                }
+            )
+        }
+    }
+}
+
+// ============================================================
+// 시계 + 날짜 + 미니 위젯 슬롯
+// ============================================================
+@Composable
+fun ClockWithWidgetSlots(
+    screenWidth: Dp,
+    screenHeight: Dp,
+    isFloating: Boolean,
+    widgetSlots: List<MiniWidget?>,
+    onSlotClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // 시간
+        val timeFormat = SimpleDateFormat("hh:mm", Locale.getDefault())
+        Text(
+            text = timeFormat.format(Calendar.getInstance().time),
+            color = Color.White,
+            fontSize = 64.sp,
+            fontWeight = FontWeight.Light,
+            letterSpacing = (-2).sp
+        )
+
+        // 날짜
+        val dateFormat = SimpleDateFormat("M월 d일 EEEE", Locale.KOREAN)
+        Text(
+            text = dateFormat.format(Calendar.getInstance().time),
+            color = Color.White.copy(alpha = 0.9f),
+            fontSize = 16.sp,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // ── 미니 위젯 슬롯 4개 ──
+        val slotSize = (screenWidth - 32.dp - 12.dp * 3) / 4  // 패딩·간격 제외 후 4등분
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            widgetSlots.forEachIndexed { index, widget ->
+                MiniWidgetSlot(
+                    widget = widget,
+                    slotSize = slotSize,
+                    isFloating = isFloating,
+                    onClick = { onSlotClick(index) }
+                )
+            }
+        }
+    }
+}
+
+// ============================================================
+// 미니 위젯 슬롯 하나
+// ============================================================
+@Composable
+fun MiniWidgetSlot(
+    widget: MiniWidget?,
+    slotSize: Dp,
+    isFloating: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(slotSize)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = if (isFloating) 0.3f else 0.2f))
+            .then(
+                if (isFloating) Modifier.border(
+                    width = 1.5.dp,
+                    color = Color.White.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(18.dp)
+                ) else Modifier
+            )
+            .clickable(enabled = isFloating, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (widget != null) {
+            // 위젯 내용
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(6.dp)
+            ) {
+                Icon(
+                    imageVector = widget.icon,
+                    contentDescription = widget.name,
+                    tint = widget.iconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = widget.value,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = widget.label,
+                    color = Color.White.copy(alpha = 0.75f),
+                    fontSize = 10.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        } else {
+            // 빈 슬롯: floating일 때 + 아이콘
+            if (isFloating) {
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = "위젯 추가",
+                    tint = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    }
+}
+
+// ============================================================
+// 미니 위젯 선택 바텀시트
+// ============================================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MiniWidgetPickerSheet(
+    widgets: List<MiniWidget>,
+    currentWidget: MiniWidget?,
+    onDismiss: () -> Unit,
+    onWidgetSelected: (MiniWidget) -> Unit,
+    onRemove: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF1C1C1E)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "위젯 선택",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.padding(vertical = 12.dp)
+            )
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                contentPadding = PaddingValues(vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp)
+            ) {
+                items(widgets) { widget ->
+                    val isSelected = currentWidget?.id == widget.id
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (isSelected) widget.iconTint.copy(alpha = 0.3f)
+                                else Color.White.copy(alpha = 0.1f)
+                            )
+                            .border(
+                                width = if (isSelected) 2.dp else 0.dp,
+                                color = if (isSelected) widget.iconTint else Color.Transparent,
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .clickable { onWidgetSelected(widget) }
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = widget.icon,
+                            contentDescription = widget.name,
+                            tint = widget.iconTint,
+                            modifier = Modifier.size(26.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = widget.value,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = widget.name,
+                            color = Color.White.copy(alpha = 0.65f),
+                            fontSize = 10.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+
+            // 현재 위젯이 있으면 제거 버튼
+            if (currentWidget != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                TextButton(
+                    onClick = onRemove,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text("위젯 제거", color = Color(0xFFFF453A), fontSize = 15.sp)
+                }
+            }
         }
     }
 }
@@ -400,41 +666,21 @@ fun LockScreen(onUnlock: () -> Unit) {
 // 항목 선택 다이얼로그
 // ============================================================
 @Composable
-fun ShortcutPickerDialog(
-    onDismiss: () -> Unit,
-    onSelect: (String) -> Unit
-) {
+fun ShortcutPickerDialog(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = Color.White,
-            shadowElevation = 8.dp
-        ) {
+        Surface(shape = RoundedCornerShape(20.dp), color = Color.White, shadowElevation = 8.dp) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
+                modifier = Modifier.fillMaxWidth().padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = "추가할 항목 선택",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                Button(
-                    onClick = { onSelect("app_widget") },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                ) { Text("앱 위젯") }
-                Button(
-                    onClick = { onSelect("favorite_app") },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                ) { Text("즐겨찾는 앱") }
-                Button(
-                    onClick = { onSelect("text") },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                ) { Text("글 넣기") }
+                Text("추가할 항목 선택", fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    color = Color.Black, modifier = Modifier.padding(bottom = 16.dp))
+                Button(onClick = { onSelect("app_widget") },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Text("앱 위젯") }
+                Button(onClick = { onSelect("favorite_app") },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Text("즐겨찾는 앱") }
+                Button(onClick = { onSelect("text") },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Text("글 넣기") }
                 Spacer(modifier = Modifier.height(8.dp))
                 TextButton(onClick = onDismiss) { Text("취소") }
             }
@@ -447,41 +693,18 @@ fun ShortcutPickerDialog(
 // ============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppWidgetBottomSheet(
-    apps: List<AppItem>,
-    onDismiss: () -> Unit,
-    onAppSelected: (AppItem) -> Unit
-) {
+fun AppWidgetBottomSheet(apps: List<AppItem>, onDismiss: () -> Unit, onAppSelected: (AppItem) -> Unit) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Color.White
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 24.dp)
-        ) {
-            Text(
-                text = "앱 선택",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black,
-                modifier = Modifier.padding(vertical = 12.dp)
-            )
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = Color.White) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+            Text("앱 선택", fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                color = Color.Black, modifier = Modifier.padding(vertical = 12.dp))
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
                 contentPadding = PaddingValues(vertical = 8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 400.dp)
+                modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)
             ) {
-                items(apps) { app ->
-                    AppGridItem(app = app, onClick = { onAppSelected(app) })
-                }
+                items(apps) { app -> AppGridItem(app = app, onClick = { onAppSelected(app) }) }
             }
         }
     }
@@ -490,63 +713,42 @@ fun AppWidgetBottomSheet(
 @Composable
 fun AppGridItem(app: AppItem, onClick: () -> Unit) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
             .padding(vertical = 12.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(RoundedCornerShape(16.dp))
+            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(16.dp))
                 .background(app.tint.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = app.icon,
-                contentDescription = app.name,
-                tint = app.tint,
-                modifier = Modifier.size(30.dp)
-            )
+            Icon(imageVector = app.icon, contentDescription = app.name,
+                tint = app.tint, modifier = Modifier.size(30.dp))
         }
         Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = app.name,
-            fontSize = 12.sp,
-            color = Color.Black,
-            textAlign = TextAlign.Center,
-            maxLines = 1
-        )
+        Text(text = app.name, fontSize = 12.sp, color = Color.Black,
+            textAlign = TextAlign.Center, maxLines = 1)
     }
 }
 
 // ============================================================
-// 잠금화면에 추가된 앱 표시 (시계 아래)
+// 추가된 앱 Row
 // ============================================================
 @Composable
 fun AddedAppsRow(apps: List<AppItem>) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
     ) {
         apps.take(8).forEach { app ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                    modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp))
                         .background(Color.White.copy(alpha = 0.85f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = app.icon,
-                        contentDescription = app.name,
-                        tint = app.tint,
-                        modifier = Modifier.size(26.dp)
-                    )
+                    Icon(imageVector = app.icon, contentDescription = app.name,
+                        tint = app.tint, modifier = Modifier.size(26.dp))
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(text = app.name, fontSize = 10.sp, color = Color.White, maxLines = 1)
@@ -555,61 +757,8 @@ fun AddedAppsRow(apps: List<AppItem>) {
     }
 }
 
-// ============================================================
-// 시계 + 미니 위젯
-// ============================================================
-@Composable
-fun ClockAndWidget(
-    screenHeight: Dp,
-    screenBig: Dp,
-    modifier: Modifier = Modifier
-) {
-    val floatModifier = Modifier
-        .clip(RoundedCornerShape(20.dp))
-        .border(width = 2.dp, color = Color.LightGray, shape = RoundedCornerShape(20.dp))
-        .padding(10.dp)
-
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        val timeFormat = SimpleDateFormat("hh:mm", Locale.getDefault())
-        val currentTime = timeFormat.format(Calendar.getInstance().time)
-        Text(text = currentTime, color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Bold)
-
-        val dateFormat = SimpleDateFormat("EEEE, MMMM dd", Locale.getDefault())
-        val currentDate = dateFormat.format(Calendar.getInstance().time)
-        Text(
-            text = currentDate,
-            color = Color.White,
-            fontSize = 18.sp,
-            modifier = Modifier.padding(top = 8.dp)
-        )
-
-        Spacer(modifier = Modifier.height(screenHeight * 0.02f))
-
-        val widgetRowModifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .border(width = 2.dp, color = Color.LightGray, shape = RoundedCornerShape(20.dp))
-            .padding(5.dp)
-            .width(screenBig * 0.25f)
-            .height(screenHeight * 0.05f)
-
-        Row(modifier = widgetRowModifier, horizontalArrangement = Arrangement.Center) {
-            repeat(4) {
-                Box(
-                    modifier = Modifier
-                        .then(floatModifier)
-                        .height(screenHeight * 0.035f)
-                        .width(screenHeight * 0.035f)
-                        .background(Color.Yellow)
-                )
-            }
-        }
-    }
-}
-
 @Preview(showBackground = true)
 @Composable
 fun LockScreenPreview() {
-    LockScreenTheme {
-        LockScreen(onUnlock = {})
-    }
+    LockScreenTheme { LockScreen(onUnlock = {}) }
 }
