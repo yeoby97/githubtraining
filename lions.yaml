@@ -1,16 +1,358 @@
-AI 답변 메신저로 받기
-OpenClaw의 등장 
-OpenClaw의 특징 – PC제어 가능, Local llm활용시 적은 비용, 토큰을 통해 원하는 다른 많은 앱들과 연결 가능.
-유저층들의 주된 활용 – 스케쥴링으로 자동화 기능
-그러나 다른 llm서비스도 해당 기능 보유.
-Gpt, gemini, claude 모두 예약 및 반복동작 가능
-예약, 반복동작을 했을 때 앱을 통해 동작 수행 알림을 받을 수 있음.
-하지만 결과물에 조건을 걸어 조건부 알림을 받는건 실패.
-그러나 mcp를 통한 메시지 앱과의 연결에서 차이가 있음.
-우선 gemini는 메신저와 연결 실패. 대신 구글과 연동돼 메시지를 보낼 수 있는 기능이 있지만 전송시마다 확인버튼을 눌러줘야함.
-Gpt는 telegram과 연동하는데 성공했지만 역시 전송시마다 확인버튼이 필요. 
-그러나 claude의 경우에는 다시 묻지 않는 선택지가 존재.
-이를 claude cowork나 code의 예약기능과 엮어 메신저로 결과물을 받을 수 있음.
-여기에서 잠깐 우리가 집고 넘어갈게 메신저를 보낼때는 해당 mcp, 즉 도구를 활용한다는 점.
-만약 내가 원할때만 메시지를 보내도록 한다면 특정 정보를 찾도록 루틴작업을 시키고 해당 정보를 찾았을 경우에만 메시지를 받는게 가능
+package com.example.lockscreen
 
+import android.app.KeyguardManager
+import android.graphics.Paint
+import android.os.Bundle
+import android.widget.Space
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.visible
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.lockscreen.ui.theme.LockScreenTheme
+import java.text.SimpleDateFormat
+import java.util.*
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
+import kotlin.math.abs
+
+class LockScreenActivity : ComponentActivity() {
+    private lateinit var keyguardManager: KeyguardManager
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // Initialize keyguard manager
+        keyguardManager = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+        
+        // Disable keyguard and turn on screen
+        setShowWhenLocked(true)
+        setTurnScreenOn(true)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            keyguardManager.requestDismissKeyguard(this, null)
+        }
+        
+        setContent {
+            LockScreenTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    LockScreen(onUnlock = { unlockDevice() })
+                }
+            }
+        }
+    }
+    
+    private fun unlockDevice() {
+        // In a real app, this would properly unlock the device
+        // For this demo, we'll just show a toast
+        Toast.makeText(this, "Device unlocked!", Toast.LENGTH_SHORT).show()
+    }
+}
+
+@Composable
+fun LockScreen(onUnlock: () -> Unit) {
+
+    var isFloating by remember { mutableStateOf(false) }
+
+    // 화면 크기 가져오기
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    val screenHeight = configuration.screenHeightDp.dp
+    val screenSmall = if(screenWidth > screenHeight) screenHeight else screenWidth
+    val screenBig = if(screenWidth > screenHeight) screenWidth else screenHeight
+    // 동적 패딩 값 계산 (화면 크기의 0.05배)
+    val horizontalPadding = screenWidth * 0.05f
+    val verticalPadding = screenHeight * 0.05f
+    // 스케일 애니메이션 정의
+    val scale by animateFloatAsState(
+        targetValue = if (isFloating) 0.7f else 1f,
+        animationSpec = tween(
+            durationMillis = 500,
+            easing = FastOutSlowInEasing
+        )
+    )
+    
+    // 패딩 애니메이션 정의
+    val horizontalPaddingAnim by animateDpAsState(
+        targetValue = if (isFloating) horizontalPadding else 0.dp,
+        animationSpec = tween(
+            durationMillis = 500,
+            easing = FastOutSlowInEasing
+        )
+    )
+    
+    val verticalPaddingAnim by animateDpAsState(
+        targetValue = if (isFloating) verticalPadding else 0.dp,
+        animationSpec = tween(
+            durationMillis = 500,
+            easing = FastOutSlowInEasing
+        )
+    )
+    
+    // 모서리 둥글기 애니메이션 정의
+    val cornerRadius by animateDpAsState(
+        targetValue = if (isFloating) 30.dp else 0.dp,
+        animationSpec = tween(
+            durationMillis = 500,
+            easing = FastOutSlowInEasing
+        )
+    )
+    
+    // 애니메이션 완료 상태 추적
+    var animationFinished by remember { mutableStateOf(false) }
+    LaunchedEffect(scale, horizontalPaddingAnim, verticalPaddingAnim) {
+        // 스케일과 패딩이 모두 목표값에 도달했는지 확인
+        val scaleTarget = if (isFloating) 0.7f else 1f
+        val horizontalPaddingTarget = if (isFloating) horizontalPadding else 0.dp
+        val verticalPaddingTarget = if (isFloating) verticalPadding else 0.dp
+
+        // 허용 오차 (tolerance)를 사용하여 부동소수점 비교
+        val epsilon = 0.001f
+        val scaleFinished = abs(scale - scaleTarget) < epsilon
+        val horizontalPaddingFinished = abs(horizontalPaddingAnim.value - horizontalPaddingTarget.value) < epsilon
+        val verticalPaddingFinished = abs(verticalPaddingAnim.value - verticalPaddingTarget.value) < epsilon
+
+        animationFinished = scaleFinished && horizontalPaddingFinished && verticalPaddingFinished
+    }
+    
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.White)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    transformOrigin = TransformOrigin(0.5f, 0f)
+                }
+                .padding(
+                    horizontal = horizontalPaddingAnim,
+                    vertical = verticalPaddingAnim
+                )
+                .clip(RoundedCornerShape(cornerRadius))
+                .background(Color.Magenta)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            val pressStartTime = System.currentTimeMillis()
+
+                            // Launch a coroutine to check for long press
+                            val isReleased = try {
+                                withTimeout(500) {
+                                    tryAwaitRelease()
+                                    true
+                                }
+                            } catch (e: TimeoutCancellationException) {
+                                isFloating = true
+                                false
+                            }
+
+                            if (!isFloating && isReleased && System.currentTimeMillis() - pressStartTime >= 500) {
+                                isFloating = true
+                            }
+                        }
+                    )
+                }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Show additional content when animation is finished
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().visible(isFloating),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Button(
+                            onClick = {
+                            }
+                        ) {
+                            Text("배경화면")
+                        }
+                        Button(
+                            onClick = {
+                                isFloating = false
+                            }
+                        ) {
+                            Text("확인")
+                        }
+                    }
+                    Spacer(
+                        modifier = Modifier.height(screenHeight * 0.1f)
+                    )
+                    ClockAndWidget(
+                        screenHeight = screenHeight,
+                        screenWidth = screenWidth,
+                        screenBig = screenBig,
+                        isFloating = isFloating
+                    )
+                    val floatModifier = Modifier.clip(RoundedCornerShape(20.dp)) // 모서리를 둥글게 (20.dp 반경)
+                        .border(width = 2.dp, color = Color.LightGray, shape = RoundedCornerShape(20.dp)) // 테두리 추가
+                        .padding(10.dp)
+                    Spacer(modifier=Modifier.height(screenHeight * 0.4f))
+                    Box(
+                        modifier = Modifier.then(floatModifier)
+                            .height(50.dp)
+                            .width(200.dp)
+                            .background(Color.Green)
+                    ){
+
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ClockAndWidget(
+    screenHeight : Dp,
+    screenWidth : Dp,
+    screenBig : Dp,
+    isFloating : Boolean
+){
+    val floatModifier = Modifier.clip(RoundedCornerShape(20.dp)) // 모서리를 둥글게 (20.dp 반경)
+        .border(width = 2.dp, color = Color.LightGray, shape = RoundedCornerShape(20.dp)) // 테두리 추가
+        .padding(10.dp)
+    val normalModifier = Modifier
+        .padding(10.dp)
+    Box(
+        modifier = if(isFloating) floatModifier else normalModifier
+    ){
+        Column(
+
+        ){
+            // 현재 시간 표시
+            val locale = LocalLocale.current
+            val timeFormat = SimpleDateFormat("hh:mm", Locale.getDefault())
+            val currentTime = timeFormat.format(Calendar.getInstance().time)
+            Text(
+                text = currentTime,
+                color = Color.White,
+                fontSize = 48.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            // 현재 날짜 표시
+            val dateFormat = SimpleDateFormat("EEEE, MMMM dd", Locale.getDefault())
+            val currentDate = dateFormat.format(Calendar.getInstance().time)
+            Text(
+                text = currentDate,
+                color = Color.White,
+                fontSize = 18.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+    }
+    Spacer(modifier = Modifier.height(screenHeight * 0.02f))
+    val widgetFloatModifier = Modifier.clip(RoundedCornerShape(20.dp)) // 모서리를 둥글게 (20.dp 반경)
+        .border(width = 2.dp, color = Color.LightGray, shape = RoundedCornerShape(20.dp)) // 테두리 추가
+        .padding(5.dp)
+        .width(screenBig * 0.25f)
+        .height(screenHeight * 0.05f)
+    Row(
+        modifier = widgetFloatModifier,
+        horizontalArrangement = Arrangement.Center,
+    ){
+        Box(
+            modifier = Modifier
+                .then(floatModifier)
+                .height(screenHeight * 0.035f)
+                .width(screenHeight * 0.035f)
+                .background(Color.Yellow)){
+        }
+        Box(
+            modifier = Modifier
+                .then(floatModifier)
+                .height(screenHeight * 0.035f)
+                .width(screenHeight * 0.035f)
+                .background(Color.Yellow)){
+        }
+        Box(
+            modifier = Modifier
+                .then(floatModifier)
+                .height(screenHeight * 0.035f)
+                .width(screenHeight * 0.035f)
+                .background(Color.Yellow)){
+        }
+        Box(
+            modifier = Modifier
+                .then(floatModifier)
+                .height(screenHeight * 0.035f)
+                .width(screenHeight * 0.035f)
+                .background(Color.Yellow)){
+        }
+    }
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun LockScreenPreview() {
+    LockScreenTheme {
+        LockScreen(onUnlock = {})
+    }
+}
