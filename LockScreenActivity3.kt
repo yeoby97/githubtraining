@@ -1,0 +1,388 @@
+
+@Composable
+fun WidgetSlotRow(
+    placedWidgets: List<PlacedWidget>,
+    isFloating: Boolean,
+    slotSize: Dp,
+    slotGap: Dp,
+    onRemove: (String) -> Unit,
+    onAdd: () -> Unit
+) {
+    val usedSlots = placedWidgets.sumOf { if (it.widget.size == WidgetSize.WIDE) 2 else 1 }
+    val round = if(isFloating) Modifier.border(1.dp,Color.LightGray, shape = RoundedCornerShape(8.dp)).clickable { onAdd() }
+                else Modifier
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(space = slotGap, alignment = Alignment.CenterHorizontally),
+        modifier = Modifier.then(round).fillMaxWidth(0.5f).height(slotSize + 2.dp)
+    ) {
+
+        placedWidgets.forEach { placed ->
+            val span = if (placed.widget.size == WidgetSize.WIDE) 2 else 1
+            Box(modifier = Modifier.width(slotSize * span)) {
+                WidgetCell(
+                    widget = placed.widget,
+                    modifier = Modifier.fillMaxWidth().height(slotSize)
+                )
+                // 편집모드 삭제 버튼 (좌상단 빨간 원)
+                if (isFloating) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(x = (-4).dp, y = (-4).dp)
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFF453A))
+                            .clickable { onRemove(placed.uid) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "제거",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 위젯 셀 (실제 잠금화면에 표시되는 위젯)
+// ============================================================
+
+@Composable
+fun WidgetCell(widget: LockWidget, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xFF3A3A3C)),
+        contentAlignment = Alignment.Center
+    ) {
+        when (widget.size) {
+            WidgetSize.SMALL -> SmallWidgetContent(widget)
+            WidgetSize.WIDE  -> WideWidgetContent(widget)
+        }
+    }
+}
+
+@Composable
+fun SmallWidgetContent(widget: LockWidget) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier.padding(6.dp)
+    ) {
+        widget.icon?.let {
+            Icon(it, null, tint = widget.iconTint, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.height(4.dp))
+        }
+        if (widget.mainValue.isNotEmpty()) {
+            Text(
+                widget.mainValue,
+                color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center, lineHeight = 16.sp
+            )
+        }
+        if (widget.subValue.isNotEmpty()) {
+            Text(
+                widget.subValue,
+                color = Color.White.copy(alpha = 0.65f), fontSize = 10.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+fun WideWidgetContent(widget: LockWidget) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        widget.icon?.let {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(it, null, tint = widget.iconTint, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+        }
+        Column {
+            if (widget.mainValue.isNotEmpty()) {
+                Text(
+                    widget.mainValue,
+                    color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (widget.subValue.isNotEmpty()) {
+                Text(
+                    widget.subValue,
+                    color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+// ============================================================
+// 위젯 선택 바텀시트 (2단계: 앱 목록 → 위젯 목록)
+// ============================================================
+
+sealed class PickerStep {
+    data object AppList : PickerStep()
+    data class WidgetList(val app: WidgetApp) : PickerStep()
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LockWidgetPickerSheet(
+    onDismiss: () -> Unit,
+    onWidgetSelected: (LockWidget) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var step by remember { mutableStateOf<PickerStep>(PickerStep.AppList) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF1C1C1E)
+    ) {
+        when (val s = step) {
+            is PickerStep.AppList -> {
+                // 1단계: 앱 목록
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 32.dp)
+                ) {
+                    Text(
+                        "위젯", fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                    LazyColumn {
+                        items(lockWidgetApps) { app ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { step = PickerStep.WidgetList(app) }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // 앱 아이콘 (컬러 원형 배경)
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(app.iconBg),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(app.icon, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Text(app.name, color = Color.White, fontSize = 17.sp, modifier = Modifier.weight(1f))
+                                Text(
+                                    app.widgets.size.toString(),
+                                    color = Color(0xFF8E8E93), fontSize = 16.sp
+                                )
+                            }
+                            Divider(color = Color.White.copy(alpha = 0.08f), thickness = 0.5.dp,
+                                modifier = Modifier.padding(start = 68.dp))
+                        }
+                    }
+                }
+            }
+
+            is PickerStep.WidgetList -> {
+                // 2단계: 위젯 목록
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 32.dp)
+                ) {
+                    // 헤더 (뒤로가기 + 앱 정보)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.1f))
+                                .clickable { step = PickerStep.AppList },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.KeyboardArrowLeft, null,
+                                tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(s.app.iconBg),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(s.app.icon, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(s.app.name, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f))
+                        Text(s.app.widgets.size.toString(), color = Color(0xFF8E8E93), fontSize = 16.sp)
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // 위젯 그리드 미리보기 (1x1 = 1칸, 2x1 = 2칸)
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(400.dp)
+                    ) {
+                        items(
+                            items = s.app.widgets,
+                            span = { widget -> GridItemSpan(if (widget.size == WidgetSize.WIDE) 2 else 1) }
+                        ) { widget ->
+                            WidgetPreviewItem(widget = widget, onClick = { onWidgetSelected(widget) })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 위젯 미리보기 아이템 (2단계에서 보여주는 각 위젯)
+@Composable
+fun WidgetPreviewItem(widget: LockWidget, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF2C2C2E))
+            .clickable { onClick() }
+            .padding(bottom = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // 위젯 미리보기 박스
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .padding(8.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFF3A3A3C)),
+            contentAlignment = Alignment.Center
+        ) {
+            when (widget.size) {
+                WidgetSize.SMALL -> SmallWidgetContent(widget)
+                WidgetSize.WIDE  -> WideWidgetContent(widget)
+            }
+        }
+        Text(
+            widget.name,
+            color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            if (widget.size == WidgetSize.SMALL) "1x1" else "2x1",
+            color = Color(0xFF8E8E93), fontSize = 11.sp
+        )
+    }
+}
+
+// ============================================================
+// 항목 선택 다이얼로그 (초록 바 탭)
+// ============================================================
+
+@Composable
+fun ShortcutPickerDialog(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(20.dp), color = Color.White, shadowElevation = 8.dp) {
+            Column(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("추가할 항목 선택", fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    color = Color.Black, modifier = Modifier.padding(bottom = 16.dp))
+                Button(onClick = { onSelect("app_widget") }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Text("앱 위젯") }
+                Button(onClick = { onSelect("favorite_app") }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Text("즐겨찾는 앱") }
+                Button(onClick = { onSelect("text") }, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) { Text("글 넣기") }
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = onDismiss) { Text("취소") }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 앱 위젯 바텀시트
+// ============================================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppWidgetBottomSheet(apps: List<AppItem>, onDismiss: () -> Unit, onAppSelected: (AppItem) -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = Color.White) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
+            Text("앱 선택", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.Black,
+                modifier = Modifier.padding(vertical = 12.dp))
+            LazyVerticalGrid(columns = GridCells.Fixed(4),
+                contentPadding = PaddingValues(vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().height(400.dp)) {
+                items(apps) { app ->
+                    Column(
+                        modifier = Modifier.fillMaxWidth().clickable { onAppSelected(app) }
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(modifier = Modifier.size(56.dp).clip(RoundedCornerShape(16.dp))
+                            .background(app.tint.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+                            Icon(app.icon, null, tint = app.tint, modifier = Modifier.size(30.dp))
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(app.name, fontSize = 12.sp, color = Color.Black, textAlign = TextAlign.Center, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 추가된 앱 Row
+// ============================================================
+
+@Composable
+fun AddedAppsRow(apps: List<AppItem>) {
+    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
+        apps.take(8).forEach { app ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = 0.85f)), contentAlignment = Alignment.Center) {
+                    Icon(app.icon, null, tint = app.tint, modifier = Modifier.size(26.dp))
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(app.name, fontSize = 10.sp, color = Color.White, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun LockScreenPreview() {
+    LockScreenTheme { LockScreen(onUnlock = {}) }
+}
