@@ -1,0 +1,308 @@
+
+                        if (isFloating && isSelected) {
+                            ResizeCornerHandle(Corner.TopStart,    Alignment.TopStart)    { dx, dy -> resizeHosted(hosted.uid, dx, dy, 1f, 1f) }
+                            ResizeCornerHandle(Corner.TopEnd,      Alignment.TopEnd)      { dx, dy -> resizeHosted(hosted.uid, dx, dy, 0f, 1f) }
+                            ResizeCornerHandle(Corner.BottomStart, Alignment.BottomStart) { dx, dy -> resizeHosted(hosted.uid, dx, dy, 1f, 0f) }
+                            ResizeCornerHandle(Corner.BottomEnd,   Alignment.BottomEnd)   { dx, dy -> resizeHosted(hosted.uid, dx, dy, 0f, 0f) }
+                            ResizeEdgeHandle(Edge.Start,  Alignment.CenterStart)  { dx, _ -> resizeHosted(hosted.uid, dx, 0f, 1f, 0.5f) }
+                            ResizeEdgeHandle(Edge.End,    Alignment.CenterEnd)    { dx, _ -> resizeHosted(hosted.uid, dx, 0f, 0f, 0.5f) }
+                            ResizeEdgeHandle(Edge.Top,    Alignment.TopCenter)    { _, dy -> resizeHosted(hosted.uid, 0f, dy, 0.5f, 1f) }
+                            ResizeEdgeHandle(Edge.Bottom, Alignment.BottomCenter)  { _, dy -> resizeHosted(hosted.uid, 0f, dy, 0.5f, 0f) }
+                        }
+
+                        if (isFloating) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 6.dp, y = (-6).dp)
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFF453A))
+                                    .clickable {
+                                        if (selectedFloatingUid == hosted.uid) selectedFloatingUid = null
+                                        onRemoveHosted(hosted.uid)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "삭제",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 항목 선택 팝업
+        if (showShortcutPopup) {
+            ShortcutPickerDialog(
+                onDismiss = { showShortcutPopup = false },
+                onSelect = { selected ->
+                    showShortcutPopup = false
+                    when (selected) {
+                        "app_widget" -> {
+                            addTarget= AddTarget.FLOATING
+                            showLockWidgetPicker = true
+                        }
+                        "real_widget" -> showRealWidgetPicker = true
+                        "favorite_app" -> showAppWidgetSheet = true
+                        "text" -> {}
+                    }
+                }
+            )
+        }
+
+        // 잠금화면 위젯 선택 (2단계 바텀시트)
+        if (showLockWidgetPicker) {
+            LockWidgetPickerSheet(
+                onDismiss = { showLockWidgetPicker = false },
+                onWidgetSelected = { widget ->
+                    addCounter++
+
+                    if (addTarget == AddTarget.SLOT) {
+                        val needed = if (widget.size == WidgetSize.WIDE) 2 else 1
+                        val used = slotWidgets.sumOf { if (it.widget.size == WidgetSize.WIDE) 2 else 1 }
+
+                        if (used + needed <= 4) {
+                            slotWidgets = slotWidgets + PlacedWidget(
+                                uid = "${widget.id}_$addCounter",
+                                widget = widget
+                            )
+                        }
+                    } else {
+                        floatingWidgets = floatingWidgets + FloatingWidget(
+                            uid = "${widget.id}_$addCounter",
+                            widget = widget,
+                            offset = Offset(
+                                x = 80f + addCounter * 20f,
+                                y = 280f + addCounter * 20f
+                            )
+                        )
+                    }
+
+                    showLockWidgetPicker = false
+                }
+            )
+        }
+
+        // 앱 위젯 바텀시트
+        if (showAppWidgetSheet) {
+            AppWidgetBottomSheet(
+                apps = defaultAppList,
+                onDismiss = { showAppWidgetSheet = false },
+                onAppSelected = { app ->
+                    if (addedApps.none { it.id == app.id }) addedApps = addedApps + app
+                    showAppWidgetSheet = false
+                }
+            )
+        }
+
+        // 실제 시스템 위젯 피커
+        if (showRealWidgetPicker && appWidgetManager != null) {
+            RealWidgetPickerSheet(
+                appWidgetManager = appWidgetManager,
+                onDismiss = { showRealWidgetPicker = false },
+                onSelect = { info ->
+                    showRealWidgetPicker = false
+                    onRealWidgetSelected(info)
+                }
+            )
+        }
+    }
+}
+
+// ============================================================
+// 플로팅 위젯 크기 조절 코너 핸들
+// ============================================================
+
+enum class Corner { TopStart, TopEnd, BottomStart, BottomEnd }
+enum class Edge { Start, End, Top, Bottom }
+
+@Composable
+fun BoxScope.ResizeCornerHandle(
+    corner: Corner,
+    alignment: Alignment,
+    onResize: (Float, Float) -> Unit,
+) {
+    val handleSize = 24.dp
+    Box(
+        modifier = Modifier
+            .align(alignment)
+            .offset(
+                x = if (alignment == Alignment.TopStart || alignment == Alignment.BottomStart) (-handleSize / 2) else (handleSize / 2),
+                y = if (alignment == Alignment.TopStart || alignment == Alignment.TopEnd) (-handleSize / 2) else (handleSize / 2)
+            )
+            .size(handleSize)
+            .pointerInput(corner) {
+                detectDragGestures { change, drag ->
+                    change.consume()
+                    val (dx, dy) = when (corner) {
+                        Corner.TopStart    -> -drag.x to -drag.y
+                        Corner.TopEnd      ->  drag.x to -drag.y
+                        Corner.BottomStart -> -drag.x to  drag.y
+                        Corner.BottomEnd   ->  drag.x to  drag.y
+                    }
+                    onResize(dx / 400f, dy / 400f)
+                }
+            }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize().padding(4.dp)) {
+            val stroke = 4.dp.toPx()
+            val len = size.minDimension
+            val cap = StrokeCap.Round
+            when (corner) {
+                Corner.TopStart -> {
+                    drawLine(Color.White, Offset(0f, 0f),   Offset(len, 0f), stroke, cap)
+                    drawLine(Color.White, Offset(0f, 0f),   Offset(0f, len), stroke, cap)
+                }
+                Corner.TopEnd -> {
+                    drawLine(Color.White, Offset(len, 0f), Offset(0f, 0f),   stroke, cap)
+                    drawLine(Color.White, Offset(len, 0f), Offset(len, len), stroke, cap)
+                }
+                Corner.BottomStart -> {
+                    drawLine(Color.White, Offset(0f, len), Offset(len, len), stroke, cap)
+                    drawLine(Color.White, Offset(0f, len), Offset(0f, 0f),   stroke, cap)
+                }
+                Corner.BottomEnd -> {
+                    drawLine(Color.White, Offset(len, len), Offset(0f, len), stroke, cap)
+                    drawLine(Color.White, Offset(len, len), Offset(len, 0f), stroke, cap)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BoxScope.ResizeEdgeHandle(
+    edge: Edge,
+    alignment: Alignment,
+    onResize: (Float, Float) -> Unit,
+) {
+    val handleThickness = 20.dp
+    val handleLength = 40.dp
+    Box(
+        modifier = Modifier
+            .align(alignment)
+            .then(
+                when (edge) {
+                    Edge.Start, Edge.End -> Modifier.width(handleThickness).height(handleLength)
+                    Edge.Top, Edge.Bottom -> Modifier.width(handleLength).height(handleThickness)
+                }
+            )
+            .pointerInput(edge) {
+                detectDragGestures { change, drag ->
+                    change.consume()
+                    when (edge) {
+                        Edge.Start  -> onResize(-drag.x / 400f, 0f)
+                        Edge.End    -> onResize( drag.x / 400f, 0f)
+                        Edge.Top    -> onResize(0f, -drag.y / 400f)
+                        Edge.Bottom -> onResize(0f,  drag.y / 400f)
+                    }
+                }
+            }
+    )
+}
+
+// ============================================================
+// 위젯 슬롯 Row (4칸)
+// ============================================================
+
+@Composable
+fun WidgetSlotRow(
+    placedWidgets: List<PlacedWidget>,
+    isFloating: Boolean,
+    slotSize: Dp,
+    slotGap: Dp,
+    onRemove: (String) -> Unit,
+    onAdd: () -> Unit
+) {
+    val usedSlots = placedWidgets.sumOf { if (it.widget.size == WidgetSize.WIDE) 2 else 1 }
+    val round = if(isFloating) Modifier.border(1.dp,Color.LightGray, shape = RoundedCornerShape(8.dp)).clickable { onAdd() }
+    else Modifier
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(space = slotGap, alignment = Alignment.CenterHorizontally),
+        modifier = Modifier.then(round).fillMaxWidth(0.5f).height(slotSize + 2.dp)
+    ) {
+
+        placedWidgets.forEach { placed ->
+            val span = if (placed.widget.size == WidgetSize.WIDE) 2 else 1
+            Box(modifier = Modifier.width(slotSize * span)) {
+                WidgetCell(
+                    widget = placed.widget,
+                    modifier = Modifier.fillMaxWidth().height(slotSize)
+                )
+                // 편집모드 삭제 버튼 (좌상단 빨간 원)
+                if (isFloating) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(x = (-4).dp, y = (-4).dp)
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFF453A))
+                            .clickable { onRemove(placed.uid) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "제거",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 위젯 셀 (실제 잠금화면에 표시되는 위젯)
+// ============================================================
+
+@Composable
+fun WidgetCell(widget: LockWidget, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xFF3A3A3C)),
+        contentAlignment = Alignment.Center
+    ) {
+        when (widget.size) {
+            WidgetSize.SMALL -> SmallWidgetContent(widget)
+            WidgetSize.WIDE  -> WideWidgetContent(widget)
+        }
+    }
+}
+
+@Composable
+fun SmallWidgetContent(widget: LockWidget) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier.padding(6.dp)
+    ) {
+        widget.icon?.let {
+            Icon(it, null, tint = widget.iconTint, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.height(4.dp))
+        }
+        if (widget.mainValue.isNotEmpty()) {
+            Text(
+                widget.mainValue,
+                color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center, lineHeight = 16.sp
+            )
+        }
+        if (widget.subValue.isNotEmpty()) {
+            Text(
+                widget.subValue,
+                color = Color.White.copy(alpha = 0.65f), fontSize = 10.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
