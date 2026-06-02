@@ -1,238 +1,32 @@
-class LockScreenActivity : ComponentActivity() {
-    private lateinit var keyguardManager: KeyguardManager
-    private lateinit var appWidgetManager: AppWidgetManager
-    private lateinit var appWidgetHost: AppWidgetHost
+"""
+nanobot - A lightweight AI agent framework
+"""
 
-    private val hostedWidgets: SnapshotStateList<HostedAppWidget> = mutableStateListOf()
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from pathlib import Path
+import tomllib
 
-    private val bindWidgetLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val id = result.data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
-        if (result.resultCode == Activity.RESULT_OK && id != -1) {
-            configureOrAdd(id)
-        } else if (id != -1) {
-            appWidgetHost.deleteAppWidgetId(id)
-        }
-    }
 
-    private val configureWidgetLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val id = result.data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1) ?: -1
-        if (result.resultCode == Activity.RESULT_OK && id != -1) {
-            addHostedWidget(id)
-        } else if (id != -1) {
-            appWidgetHost.deleteAppWidgetId(id)
-        }
-    }
+def _read_pyproject_version() -> str | None:
+    """Read the source-tree version when package metadata is unavailable."""
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    if not pyproject.exists():
+        return None
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    return data.get("project", {}).get("version")
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        keyguardManager = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
-        appWidgetManager = AppWidgetManager.getInstance(this)
-        appWidgetHost = AppWidgetHost(this, HOST_ID)
-        setShowWhenLocked(true)
-        setTurnScreenOn(true)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
-            keyguardManager.requestDismissKeyguard(this, null)
-        }
-        setContent {
-            LockScreenTheme() {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    LockScreen(
-                        onUnlock = { unlockDevice() },
-                        hostedWidgets = hostedWidgets,
-                        appWidgetHost = appWidgetHost,
-                        appWidgetManager = appWidgetManager,
-                        onRealWidgetSelected = { info -> onProviderSelected(info) },
-                        onRemoveHosted = { uid -> removeHosted(uid) },
-                    )
-                }
-            }
-        }
-    }
 
-    override fun onStart() {
-        super.onStart()
-        try { appWidgetHost.startListening() } catch (_: Exception) {}
-    }
+def _resolve_version() -> str:
+    try:
+        return _pkg_version("nanobot-ai")
+    except PackageNotFoundError:
+        # Source checkouts often import nanobot without installed dist-info.
+        return _read_pyproject_version() or "0.1.5.post3"
 
-    override fun onStop() {
-        super.onStop()
-        try { appWidgetHost.stopListening() } catch (_: Exception) {}
-    }
 
-    private fun unlockDevice() {
-        Toast.makeText(this, "Device unlocked!", Toast.LENGTH_SHORT).show()
-    }
+__version__ = _resolve_version()
+__logo__ = "🐈"
 
-    private fun resolveWidgetSizeDp(info: AppWidgetProviderInfo): Pair<Int, Int> {
-        val d = resources.displayMetrics.density
-        // 런처 셀 한 칸 가정치 (Samsung 홈은 가변이지만 70dp가 합리적 기본값)
-        val cellDp = 70
+from nanobot.nanobot import Nanobot, RunResult
 
-        var wDp = (info.minWidth / d).toInt()
-        var hDp = (info.minHeight / d).toInt()
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            val tcw = info.targetCellWidth
-            val tch = info.targetCellHeight
-            if (tcw > 0) wDp = maxOf(wDp, tcw * cellDp)
-            if (tch > 0) hDp = maxOf(hDp, tch * cellDp)
-        }
-
-        if (wDp <= 0) wDp = (info.minResizeWidth / d).toInt()
-        if (hDp <= 0) hDp = (info.minResizeHeight / d).toInt()
-
-        if (wDp <= 0) wDp = 110
-        if (hDp <= 0) hDp = 110
-
-        return wDp to hDp
-    }
-
-    private fun onProviderSelected(info: AppWidgetProviderInfo) {
-        val appWidgetId = appWidgetHost.allocateAppWidgetId()
-        val (minWdp, minHdp) = resolveWidgetSizeDp(info)
-        val options = Bundle().apply {
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, minWdp)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, minHdp)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, minWdp)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, minHdp)
-        }
-        val bound = try {
-            appWidgetManager.bindAppWidgetIdIfAllowed(appWidgetId, info.provider, options)
-        } catch (_: Exception) { false }
-
-        if (bound) {
-            configureOrAdd(appWidgetId)
-            return
-        }
-
-        val bindIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND).apply {
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_OPTIONS, options)
-        }
-        try {
-            bindWidgetLauncher.launch(bindIntent)
-        } catch (_: ActivityNotFoundException) {
-            Toast.makeText(this, "위젯 바인딩을 처리할 수 없습니다", Toast.LENGTH_SHORT).show()
-            appWidgetHost.deleteAppWidgetId(appWidgetId)
-        }
-    }
-
-    private fun configureOrAdd(appWidgetId: Int) {
-        val info = appWidgetManager.getAppWidgetInfo(appWidgetId) ?: run {
-            appWidgetHost.deleteAppWidgetId(appWidgetId); return
-        }
-        val configure = info.configure
-        if (configure != null) {
-            val configureIntent = Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE).apply {
-                component = configure
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-            }
-            try {
-                configureWidgetLauncher.launch(configureIntent)
-            } catch (_: Exception) {
-                addHostedWidget(appWidgetId)
-            }
-        } else {
-            addHostedWidget(appWidgetId)
-        }
-    }
-
-    private fun addHostedWidget(appWidgetId: Int) {
-        val info = appWidgetManager.getAppWidgetInfo(appWidgetId) ?: return
-        val (minWdp, minHdp) = resolveWidgetSizeDp(info)
-        val options = Bundle().apply {
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, minWdp)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, minHdp)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, minWdp)
-            putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, minHdp)
-        }
-        try { appWidgetManager.updateAppWidgetOptions(appWidgetId, options) } catch (_: Exception) {}
-        val d = resources.displayMetrics.density
-        hostedWidgets.add(
-            HostedAppWidget(
-                uid = "hosted_${appWidgetId}_${System.currentTimeMillis()}",
-                appWidgetId = appWidgetId,
-                providerInfo = info,
-                widthPx = (minWdp * d).toInt(),
-                heightPx = (minHdp * d).toInt(),
-                offset = Offset(200f, 600f),
-                scaleX = 1f,
-                scaleY = 1f,
-            )
-        )
-    }
-
-    private fun removeHosted(uid: String) {
-        val item = hostedWidgets.firstOrNull { it.uid == uid } ?: return
-        appWidgetHost.deleteAppWidgetId(item.appWidgetId)
-        hostedWidgets.remove(item)
-    }
-
-    companion object { const val HOST_ID = 1024 }
-}
-
-data class HostedAppWidget(
-    val uid: String,
-    val appWidgetId: Int,
-    val providerInfo: AppWidgetProviderInfo,
-    val widthPx: Int,
-    val heightPx: Int,
-    val offset: Offset,
-    val scaleX: Float = 1f,
-    val scaleY: Float = 1f,
-)
-
-// ============================================================
-// 데이터 모델
-// ============================================================
-
-enum class WidgetSize { SMALL, WIDE }  // 1x1, 2x1
-
-data class LockWidget(
-    val id: String,
-    val appId: String,
-    val name: String,
-    val size: WidgetSize,
-    val icon: ImageVector? = null,
-    val iconTint: Color = Color.White,
-    val mainValue: String = "",
-    val subValue: String = ""
-)
-
-data class PlacedWidget(
-    val uid: String,
-    val widget: LockWidget,
-)
-
-data class FloatingWidget(
-    val uid: String,
-    val widget: LockWidget,
-    val offset: Offset,
-    val scaleX: Float = 1f,
-    val scaleY: Float = 1f,
-)
-
-enum class AddTarget{
-    SLOT,
-    FLOATING
-}
-
-data class WidgetApp(
-    val id: String,
-    val name: String,
-    val icon: ImageVector,
-    val iconBg: Color,
-    val widgets: List<LockWidget>
-)
-
-data class AppItem(
-    val id: String,
-    val name: String,
-    val icon: ImageVector,
-    val tint: Color
-)
+__all__ = ["Nanobot", "RunResult"]
